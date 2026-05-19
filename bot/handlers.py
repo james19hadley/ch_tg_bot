@@ -7,6 +7,7 @@ from bot.config import FONT_FILES, MAX_TEXT_LENGTH
 from bot.database import get_user_settings, update_user_setting
 from bot.image_gen import text_to_image
 from bot.text_audio import get_pinyin_and_translation, get_tts_voice
+from bot.commands import get_help_text
 
 router = Router()
 
@@ -45,14 +46,8 @@ def get_settings_keyboard(user_id: int):
 
 @router.message(Command("start", "help"))
 async def help_cmd(message: Message):
-    help_text = (
-        "🐼 **Advanced Chinese Bot**\n\n"
-        "**Commands:**\n"
-        "👉 `/settings` - Configure font, vertical mode, and extra info\n"
-        "👉 `/color red` - Change text color (red, blue, #FF0000, etc.)\n"
-        "👉 `/ch <text>` - Generate image in groups\n"
-    )
-    await message.reply(help_text, parse_mode="Markdown")
+    # Текст теперь генерируется динамически!
+    await message.reply(get_help_text(), parse_mode="Markdown")
 
 @router.message(Command("color"))
 async def color_cmd(message: Message):
