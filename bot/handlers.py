@@ -22,7 +22,7 @@ async def process_text(message: Message, text: str):
     await message.reply_photo(photo=image_file, caption=caption, parse_mode="Markdown")
     
     if settings["extra_info"]:
-        voice_file = get_tts_voice(text)
+        voice_file = await get_tts_voice(text)
         if voice_file:
             await message.answer_voice(voice=voice_file)
 
