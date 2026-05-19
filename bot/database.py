@@ -17,6 +17,19 @@ def save_settings():
 
 def get_user_settings(user_id: int):
     uid = str(user_id)
+    
+    # Миграция старых данных: если у юзера была сохранена просто строка, превращаем в словарь
+    if uid in user_settings and isinstance(user_settings[uid], str):
+        old_font = user_settings[uid]
+        user_settings[uid] = {
+            "font": old_font,
+            "color": "black",
+            "vertical": False,
+            "extra_info": True
+        }
+        save_settings()
+
+    # Если юзера еще нет в базе
     if uid not in user_settings:
         user_settings[uid] = {
             "font": DEFAULT_FONT,
@@ -24,6 +37,8 @@ def get_user_settings(user_id: int):
             "vertical": False,
             "extra_info": True
         }
+        save_settings()
+        
     return user_settings[uid]
 
 def update_user_setting(user_id: int, key: str, value):

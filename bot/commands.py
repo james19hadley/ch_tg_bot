@@ -1,6 +1,5 @@
 from aiogram.types import BotCommand
 
-# Единый список команд для бота и для /help
 BOT_COMMANDS = [
     BotCommand(command="settings", description="Open settings (Fonts, Vertical, Audio)"),
     BotCommand(command="color", description="Change text color (e.g., /color red)"),
@@ -8,7 +7,6 @@ BOT_COMMANDS = [
     BotCommand(command="help", description="Show this help message"),
 ]
 
-# Общее описание фичей бота
 FEATURES_TEXT = (
     "🐼 **Advanced Chinese Bot**\n\n"
     "Send me Chinese characters and I will generate a beautiful image, "
@@ -21,8 +19,8 @@ FEATURES_TEXT = (
 )
 
 def get_help_text() -> str:
-    """Динамически генерирует текст для /help на основе списка команд."""
     text = FEATURES_TEXT
     for cmd in BOT_COMMANDS:
-        text += f"👉 `/{cmd.command}` — {cmd.description}\n"
+        # Убрали обратные кавычки (`), чтобы команды стали кликабельными ссылками!
+        text += f"👉 /{cmd.command} — {cmd.description}\n"
     return text
