@@ -18,24 +18,30 @@ def save_settings():
 def get_user_settings(user_id: int):
     uid = str(user_id)
     
-    # Миграция старых данных: если у юзера была сохранена просто строка, превращаем в словарь
-    if uid in user_settings and isinstance(user_settings[uid], str):
-        old_font = user_settings[uid]
-        user_settings[uid] = {
-            "font": old_font,
-            "color": "black",
-            "vertical": False,
-            "extra_info": True
-        }
-        save_settings()
+    if uid in user_settings:
+        s = user_settings[uid]
+        if isinstance(s, str):
+            # Very old format
+            user_settings[uid] = {"font": s}
+            
+        # Migrate from "extra_info" to separated toggles
+        if "extra_info" in user_settings[uid]:
+            val = user_settings[uid]["extra_info"]
+            user_settings[uid].update({
+                "pinyin": val, "audio": val, "ru": val, "en": val
+            })
+            del user_settings[uid]["extra_info"]
+            save_settings()
 
-    # Если юзера еще нет в базе
     if uid not in user_settings:
         user_settings[uid] = {
             "font": DEFAULT_FONT,
             "color": "black",
             "vertical": False,
-            "extra_info": True
+            "pinyin": True,
+            "audio": True,
+            "ru": True,
+            "en": True
         }
         save_settings()
         
