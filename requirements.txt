@@ -1,2 +1,5 @@
 aiogram>=3.4.0
 Pillow>=10.2.0
+pypinyin>=0.53.0
+deep-translator>=1.11.4
+gTTS>=2.5.1
