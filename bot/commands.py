@@ -1,26 +1,28 @@
 from aiogram.types import BotCommand
 
 BOT_COMMANDS = [
-    BotCommand(command="settings", description="Open settings (Fonts, Vertical, Audio)"),
-    BotCommand(command="color", description="Change text color (e.g., /color red)"),
-    BotCommand(command="ch", description="Generate image in groups"),
-    BotCommand(command="help", description="Show this help message"),
+    BotCommand(command="settings", description="Open settings (Font, Color, Audio, Pushes)"),
+    BotCommand(command="vocab",    description="View your saved vocabulary"),
+    BotCommand(command="save",     description="Save a word: /save 你好 (or reply to a message)"),
+    BotCommand(command="ch",       description="Generate image in groups: /ch 你好"),
+    BotCommand(command="help",     description="Show help"),
 ]
 
 FEATURES_TEXT = (
-    "🐼 **Advanced Chinese Bot**\n\n"
-    "Send me Chinese characters and I will generate a beautiful image, "
-    "provide Pinyin, translations, and high-quality Neural TTS audio!\n\n"
+    "🐼 **Chinese Bot**\n\n"
+    "Send Chinese characters — get a beautiful image, Pinyin, translations, and Neural TTS audio.\n"
+    "Any other text is auto-translated to Chinese first.\n\n"
     "✨ **Features:**\n"
-    "• 🖌️ **Fonts**: Multiple fonts including Calligraphy (KaiTi).\n"
-    "• 📜 **Vertical**: Traditional top-to-bottom writing mode.\n"
-    "• 🗣️ **Premium Audio**: Native-like Microsoft Edge TTS.\n\n"
+    "• 🖌️ **Fonts & Colors** — multiple styles, customisable.\n"
+    "• 📜 **Vertical mode** — traditional top-to-bottom writing.\n"
+    "• 🗣️ **TTS** — native-like Microsoft Edge Neural voice.\n"
+    "• 💾 **Vocabulary** — save words, review anytime.\n"
+    "• 📬 **Daily pushes** — bot sends words from your vocab at random times.\n\n"
     "🛠 **Commands:**\n"
 )
 
 def get_help_text() -> str:
     text = FEATURES_TEXT
     for cmd in BOT_COMMANDS:
-        # Убрали обратные кавычки (`), чтобы команды стали кликабельными ссылками!
         text += f"👉 /{cmd.command} — {cmd.description}\n"
     return text
