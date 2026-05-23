@@ -16,6 +16,10 @@ from bot.utils import has_chinese
 
 router = Router()
 
+# Short-lived in-memory cache: (user_id, msg_id) -> text
+# Used to avoid putting long Chinese text in callback_data (64-byte limit)
+_save_cache: dict[tuple[int, int], str] = {}
+
 # ── Color palette ──────────────────────────────────────────────────────────────
 
 COLOR_OPTIONS = {
@@ -57,10 +61,14 @@ async def process_text(message: Message, text: str):
         caption = f"🔄 *Auto-translated to Chinese:*\n\n{caption}"
 
     b = InlineKeyboardBuilder()
-    if word_exists(message.from_user.id, text):
+    already_saved = word_exists(message.from_user.id, text)
+    if already_saved:
         b.button(text="✅ In vocab", callback_data="vocab_already")
     else:
-        b.button(text="💾 Save to vocab", callback_data=f"vocab_save_{text[:50]}")
+        # Store text in cache keyed by original message id; callback carries only the id
+        cache_key = (message.from_user.id, message.message_id)
+        _save_cache[cache_key] = text
+        b.button(text="💾 Save to vocab", callback_data=f"vs_{message.message_id}")
 
     await message.reply_photo(
         photo=image_file,
@@ -303,9 +311,20 @@ async def toggle_settings(callback: CallbackQuery):
 
 # ── Callbacks: vocabulary inline save ─────────────────────────────────────────
 
-@router.callback_query(F.data.startswith("vocab_save_"))
+@router.callback_query(F.data.startswith("vs_"))
 async def vocab_save_inline(callback: CallbackQuery):
-    text = callback.data.replace("vocab_save_", "")
+    try:
+        orig_msg_id = int(callback.data.replace("vs_", ""))
+    except ValueError:
+        await callback.answer("Error: invalid key")
+        return
+
+    cache_key = (callback.from_user.id, orig_msg_id)
+    text = _save_cache.get(cache_key)
+    if not text:
+        await callback.answer("⚠️ Couldn't find the word (bot may have restarted)")
+        return
+
     pinyin_info = get_extra_info(text, show_pinyin=True, show_ru=True, show_en=True)
     py = ru = en = None
     for line in pinyin_info.split("\n"):
@@ -315,8 +334,10 @@ async def vocab_save_inline(callback: CallbackQuery):
             ru = line.split(":", 1)[-1].strip()
         elif "EN" in line:
             en = line.split(":", 1)[-1].strip()
+
     added = add_word(callback.from_user.id, text, pinyin=py, trans_ru=ru, trans_en=en)
     if added:
+        _save_cache.pop(cache_key, None)  # clean up
         await callback.answer(f"✅ {text} saved!")
         b = InlineKeyboardBuilder()
         b.button(text="✅ In vocab", callback_data="vocab_already")
