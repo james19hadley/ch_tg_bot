@@ -1,5 +1,5 @@
 import sqlite3
-from bot.database import db
+from ch_tg_bot.database import db
 
 def add_word(user_id: int, text: str, pinyin: str = None,
              trans_ru: str = None, trans_en: str = None) -> bool:

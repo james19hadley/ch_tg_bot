@@ -3,16 +3,16 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from bot.config import FONT_FILES, MAX_TEXT_LENGTH
-from bot.database import (
+from ch_tg_bot.config import FONT_FILES, MAX_TEXT_LENGTH
+from ch_tg_bot.database import (
     get_user_settings, update_user_setting,
     get_push_settings, upsert_push_settings,
 )
-from bot.vocabulary import add_word, get_words, delete_word, count_words, word_exists
-from bot.image_gen import text_to_image
-from bot.text_audio import get_extra_info, get_tts_voice, translate_to_chinese
-from bot.commands import get_help_text
-from bot.utils import has_chinese
+from ch_tg_bot.vocabulary import add_word, get_words, delete_word, count_words, word_exists
+from ch_tg_bot.image_gen import text_to_image
+from ch_tg_bot.text_audio import get_extra_info, get_tts_voice, translate_to_chinese
+from ch_tg_bot.commands import get_help_text
+from ch_tg_bot.utils import has_chinese
 
 router = Router()
 

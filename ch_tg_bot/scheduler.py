@@ -5,11 +5,11 @@ from datetime import datetime, timezone, timedelta
 
 from aiogram import Bot
 
-from bot.database import get_all_push_targets, update_last_push
-from bot.vocabulary import get_random_word, count_words
-from bot.image_gen import text_to_image
-from bot.text_audio import get_extra_info, get_tts_voice
-from bot.database import get_user_settings
+from ch_tg_bot.database import get_all_push_targets, update_last_push
+from ch_tg_bot.vocabulary import get_random_word, count_words
+from ch_tg_bot.image_gen import text_to_image
+from ch_tg_bot.text_audio import get_extra_info, get_tts_voice
+from ch_tg_bot.database import get_user_settings
 
 logger = logging.getLogger(__name__)
 

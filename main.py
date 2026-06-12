@@ -1,11 +1,12 @@
 import asyncio
 import logging
 from aiogram import Bot, Dispatcher
-from bot.config import BOT_TOKEN
-from bot.database import load_settings
-from bot.image_gen import init_fonts
-from bot.handlers import router
-from bot.commands import BOT_COMMANDS
+from ch_tg_bot.config import BOT_TOKEN
+from ch_tg_bot.database import load_settings
+from ch_tg_bot.image_gen import init_fonts
+from ch_tg_bot.handlers import router
+from ch_tg_bot.commands import BOT_COMMANDS
+from ch_tg_bot.scheduler import scheduler_loop
 
 async def main():
     logging.basicConfig(level=logging.INFO)
@@ -19,10 +20,13 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
     dp.include_router(router)
-    
+
+    # Запускаем планировщик ежедневных пушей в фоне
+    asyncio.create_task(scheduler_loop(bot))
+
     # Автоматически обновляем меню команд в интерфейсе Telegram
     await bot.set_my_commands(BOT_COMMANDS)
-    
+
     logging.info("Bot is starting...")
     await dp.start_polling(bot, drop_pending_updates=True)
 

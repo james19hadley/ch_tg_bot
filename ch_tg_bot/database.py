@@ -3,7 +3,7 @@ import json
 import os
 import logging
 from contextlib import contextmanager
-from bot.config import DB_FILE, DEFAULT_FONT
+from ch_tg_bot.config import DB_FILE, DEFAULT_FONT
 
 def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)

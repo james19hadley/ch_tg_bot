@@ -1,6 +1,7 @@
+.env
 __pycache__/
 *.pyc
-.env
-font.ttf
-fonts/
+*.pyo
 data/
+fonts/
+*.migrated
