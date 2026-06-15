@@ -9,3 +9,5 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+    ports:
+      - "8090:8090"

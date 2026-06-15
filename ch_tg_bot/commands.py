@@ -5,6 +5,8 @@ BOT_COMMANDS = [
     BotCommand(command="vocab",    description="View your saved vocabulary"),
     BotCommand(command="save",     description="Save a word: /save 你好 (or reply to a message)"),
     BotCommand(command="ch",       description="Generate image in groups: /ch 你好"),
+    BotCommand(command="id",       description="Get your Telegram User ID for Web App sync"),
+    BotCommand(command="progress", description="View synced Chinese study progress"),
     BotCommand(command="help",     description="Show help"),
 ]
 

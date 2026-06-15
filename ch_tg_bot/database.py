@@ -57,6 +57,15 @@ def init_db():
                 pushes_per_day INTEGER DEFAULT 2,
                 last_push_at   TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS user_progress (
+                user_id           INTEGER PRIMARY KEY,
+                streak            INTEGER DEFAULT 0,
+                score             INTEGER DEFAULT 0,
+                lessons_completed TEXT    DEFAULT '[]',
+                accuracy          INTEGER DEFAULT 0,
+                updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
         """)
 
 def _migrate_from_json(json_path: str):
@@ -189,5 +198,29 @@ def get_all_push_targets() -> list[dict]:
             SELECT user_id, chat_id, pushes_per_day, last_push_at
             FROM push_schedule
             WHERE enabled = 1 AND pushes_per_day > 0
+        """).fetchall()
+        return [dict(r) for r in rows]
+
+# ── User progress (synced from Web App) ────────────────────────────────────────
+
+def update_user_progress(user_id: int, streak: int, score: int, lessons: list, accuracy: int) -> None:
+    with db() as conn:
+        conn.execute("""
+            INSERT INTO user_progress (user_id, streak, score, lessons_completed, accuracy, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                streak = excluded.streak,
+                score = excluded.score,
+                lessons_completed = excluded.lessons_completed,
+                accuracy = excluded.accuracy,
+                updated_at = CURRENT_TIMESTAMP
+        """, (user_id, streak, score, json.dumps(lessons), accuracy))
+
+def get_all_user_progress() -> list[dict]:
+    with db() as conn:
+        rows = conn.execute("""
+            SELECT user_id, streak, score, lessons_completed, accuracy, updated_at
+            FROM user_progress
+            ORDER BY updated_at DESC
         """).fetchall()
         return [dict(r) for r in rows]

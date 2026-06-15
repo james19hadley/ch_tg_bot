@@ -4,9 +4,11 @@ from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from ch_tg_bot.config import FONT_FILES, MAX_TEXT_LENGTH
+import json
 from ch_tg_bot.database import (
     get_user_settings, update_user_setting,
     get_push_settings, upsert_push_settings,
+    get_all_user_progress,
 )
 from ch_tg_bot.vocabulary import add_word, get_words, delete_word, count_words, word_exists
 from ch_tg_bot.image_gen import text_to_image
@@ -173,6 +175,50 @@ def get_vocab_keyboard(user_id: int, page: int = 0, delete_mode: bool = False):
 @router.message(Command("start", "help"))
 async def help_cmd(message: Message):
     await message.reply(get_help_text(), parse_mode="Markdown")
+
+@router.message(Command("id"))
+async def id_cmd(message: Message):
+    await message.reply(
+        f"🔑 *Your Telegram User ID:* `{message.from_user.id}`\n\n"
+        f"Copy this ID and paste it into the Hànyīn web app Sync settings to synchronize your progress.",
+        parse_mode="Markdown"
+    )
+
+@router.message(Command("progress"))
+async def progress_cmd(message: Message):
+    progress_list = get_all_user_progress()
+    if not progress_list:
+        await message.reply(
+            "📭 No study progress has been synchronized yet.\n\n"
+            "Open the Hànyīn web app, open the Sync settings, enter your Telegram User ID, and sync!",
+            parse_mode="Markdown"
+        )
+        return
+
+    lines = ["🎓 *Chinese Study Progress Report:*"]
+    for p in progress_list:
+        try:
+            member = await message.chat.get_member(p['user_id'])
+            name = member.user.full_name
+        except Exception:
+            name = f"Student {p['user_id']}"
+
+        try:
+            lessons = json.loads(p.get('lessons_completed', '[]'))
+        except Exception:
+            lessons = []
+        lessons_str = ", ".join(f"Lesson {l}" for l in lessons) if lessons else "None"
+
+        lines.append(
+            f"👤 *{name}*\n"
+            f"🔥 Streak: *{p['streak']}* days\n"
+            f"🏆 Total Score: *{p['score']}* points\n"
+            f"📚 Completed: *{lessons_str}*\n"
+            f"🎯 Tone Accuracy: *{p['accuracy']}%*\n"
+            f"🕒 Last Active: {p['updated_at']}"
+        )
+
+    await message.reply("\n\n".join(lines), parse_mode="Markdown")
 
 @router.message(Command("settings"))
 async def settings_cmd(message: Message):
