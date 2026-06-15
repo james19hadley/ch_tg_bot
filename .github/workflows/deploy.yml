@@ -20,7 +20,7 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           source: "."
-          target: "/opt/ch_tg_bot"
+          target: "/opt/ch_bot"
 
       - name: Restart Docker container
         uses: appleboy/ssh-action@master
@@ -29,5 +29,5 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/ch_tg_bot
+            cd /opt/ch_bot
             docker compose up -d --build
