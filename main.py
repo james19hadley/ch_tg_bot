@@ -27,8 +27,33 @@ async def handle_progress_api(request):
         if not user_id:
             return web.json_response({'error': 'user_id is required'}, status=400, headers={'Access-Control-Allow-Origin': '*'})
 
+        # Convert to int in case it was passed as string
+        user_id = int(user_id)
+
         update_user_progress(user_id, streak, score, lessons, accuracy)
         logging.info(f"API: Sync progress for user {user_id}")
+
+        # Real-time progress push if configured and sharing is ON
+        from ch_tg_bot.database import get_student_progress, get_progress_push_config
+        student = get_student_progress(user_id)
+        if student and student.get("share_progress"):
+            config = get_progress_push_config(user_id)
+            if config and config.get("chat_id"):
+                bot = request.app['bot']
+                from ch_tg_bot.handlers import format_progress_report
+                report = format_progress_report(student)
+                message_text = f"📈 *New Progress Update synced!*\n\n{report}"
+                try:
+                    await bot.send_message(
+                        chat_id=config["chat_id"],
+                        text=message_text,
+                        message_thread_id=config.get("message_thread_id"),
+                        parse_mode="Markdown"
+                    )
+                    logging.info(f"API: Pushed progress update for user {user_id} to chat {config['chat_id']}")
+                except Exception as ex:
+                    logging.error(f"API Error pushing update: {ex}")
+
         return web.json_response({'status': 'ok'}, headers={'Access-Control-Allow-Origin': '*'})
     except Exception as e:
         logging.error(f"API Error: {e}")
@@ -56,8 +81,9 @@ async def handle_tts_api(request):
         headers={'Access-Control-Allow-Origin': '*'}
     )
 
-async def start_http_server():
+async def start_http_server(bot):
     app = web.Application()
+    app['bot'] = bot
     app.router.add_route('*', '/api/progress', handle_progress_api)
     app.router.add_route('*', '/api/tts', handle_tts_api)
     runner = web.AppRunner(app)
@@ -80,7 +106,7 @@ async def main():
     dp.include_router(router)
 
     # Запускаем HTTP сервер и планировщик ежедневных пушей в фоне
-    asyncio.create_task(start_http_server())
+    asyncio.create_task(start_http_server(bot))
     asyncio.create_task(scheduler_loop(bot))
 
     # Автоматически обновляем меню команд в интерфейсе Telegram

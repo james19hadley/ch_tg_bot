@@ -6,7 +6,12 @@ BOT_COMMANDS = [
     BotCommand(command="save",     description="Save a word: /save 你好 (or reply to a message)"),
     BotCommand(command="ch",       description="Generate image in groups: /ch 你好"),
     BotCommand(command="id",       description="Get your Telegram User ID for Web App sync"),
-    BotCommand(command="progress", description="View synced Chinese study progress"),
+    BotCommand(command="progress", description="View synced Chinese study progress (/progress or /progress @username)"),
+    BotCommand(command="share",    description="Toggle sharing progress: /share on /share off"),
+    BotCommand(command="track",    description="Follow student progress: /track @username"),
+    BotCommand(command="untrack",  description="Stop following student: /untrack @username"),
+    BotCommand(command="set_spam_topic",   description="Route updates to this topic: /set_spam_topic @username"),
+    BotCommand(command="unset_spam_topic", description="Stop routing updates: /unset_spam_topic @username"),
     BotCommand(command="help",     description="Show help"),
 ]
 

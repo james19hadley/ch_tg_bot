@@ -1,7 +1,8 @@
-from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram import Router, F, Bot, BaseMiddleware
+from aiogram.types import Message, CallbackQuery, TelegramObject
 from aiogram.filters import Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from typing import Callable, Dict, Any, Awaitable
 
 from ch_tg_bot.config import FONT_FILES, MAX_TEXT_LENGTH
 import json
@@ -9,6 +10,12 @@ from ch_tg_bot.database import (
     get_user_settings, update_user_setting,
     get_push_settings, upsert_push_settings,
     get_all_user_progress,
+    upsert_user, set_share_progress,
+    get_user_by_username, get_user_by_id,
+    add_pairing, remove_pairing, is_paired,
+    get_paired_students, get_student_progress,
+    upsert_progress_push_config, remove_progress_push_config,
+    get_progress_push_config,
 )
 from ch_tg_bot.vocabulary import add_word, get_words, delete_word, count_words, word_exists
 from ch_tg_bot.image_gen import text_to_image
@@ -16,7 +23,26 @@ from ch_tg_bot.text_audio import get_extra_info, get_tts_voice, translate_to_chi
 from ch_tg_bot.commands import get_help_text
 from ch_tg_bot.utils import has_chinese
 
+class UserUpsertMiddleware(BaseMiddleware):
+    async def __call__(
+        self,
+        handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+        event: TelegramObject,
+        data: Dict[str, Any]
+    ) -> Any:
+        user = getattr(event, "from_user", None)
+        if user:
+            upsert_user(
+                user_id=user.id,
+                username=user.username,
+                first_name=user.first_name,
+                last_name=user.last_name
+            )
+        return await handler(event, data)
+
 router = Router()
+router.message.outer_middleware(UserUpsertMiddleware())
+router.callback_query.outer_middleware(UserUpsertMiddleware())
 
 # Short-lived in-memory cache: (user_id, msg_id) -> text
 # Used to avoid putting long Chinese text in callback_data (64-byte limit)
@@ -184,41 +210,239 @@ async def id_cmd(message: Message):
         parse_mode="Markdown"
     )
 
+def format_progress_report(p: dict) -> str:
+    name = p.get('first_name') or p.get('username') or f"User {p['user_id']}"
+    username_suffix = f" (@{p['username']})" if p.get('username') else ""
+    
+    try:
+        lessons = json.loads(p.get('lessons_completed', '[]'))
+    except Exception:
+        lessons = []
+    lessons_str = ", ".join(f"Lesson {l}" for l in lessons) if lessons else "None"
+
+    streak = p.get('streak') if p.get('streak') is not None else 0
+    score = p.get('score') if p.get('score') is not None else 0
+    accuracy = p.get('accuracy') if p.get('accuracy') is not None else 0
+    updated_at = p.get('updated_at') or "Never synced"
+
+    return (
+        f"👤 *{name}*{username_suffix}\n"
+        f"🔥 Streak: *{streak}* days\n"
+        f"🏆 Total Score: *{score}* points\n"
+        f"📚 Completed: *{lessons_str}*\n"
+        f"🎯 Tone Accuracy: *{accuracy}%*\n"
+        f"🕒 Last Active: {updated_at}"
+    )
+
 @router.message(Command("progress"))
 async def progress_cmd(message: Message):
-    progress_list = get_all_user_progress()
-    if not progress_list:
+    args = message.text.split()
+
+    # 1. Query for a specific user
+    if len(args) > 1:
+        target_str = args[1].strip()
+        target_user = None
+
+        # Check if target_str is a numeric user_id
+        if target_str.isdigit():
+            target_user = get_user_by_id(int(target_str))
+        else:
+            target_user = get_user_by_username(target_str)
+
+        if not target_user:
+            await message.reply(
+                f"❌ User *{target_str}* not found. "
+                f"They must interact with the bot at least once.",
+                parse_mode="Markdown"
+            )
+            return
+
+        target_id = target_user["user_id"]
+        # Check permission
+        if target_id != message.from_user.id and not target_user.get("share_progress"):
+            await message.reply(
+                f"🔒 *Access Denied.*\n\n"
+                f"User *{target_str}* has disabled progress sharing. "
+                f"They need to run `/share on` in the bot to allow sharing.",
+                parse_mode="Markdown"
+            )
+            return
+
+        progress = get_student_progress(target_id)
+        if not progress or (progress.get("streak") is None and progress.get("score") is None):
+            await message.reply(f"👤 *{target_str}* has not synchronized any study progress yet.", parse_mode="Markdown")
+            return
+
+        await message.reply(f"🎓 *Progress Report:*\n\n{format_progress_report(progress)}", parse_mode="Markdown")
+        return
+
+    # 2. Query for self and paired students
+    own_progress = get_student_progress(message.from_user.id)
+    paired_students = get_paired_students(message.from_user.id)
+
+    sections = []
+
+    # Own Progress section
+    if own_progress and (own_progress.get("streak") is not None or own_progress.get("score") is not None):
+        sections.append(f"⭐️ *Your Progress:*\n{format_progress_report(own_progress)}")
+    else:
+        sections.append(
+            "⭐️ *Your Progress:*\n"
+            "You haven't synchronized your progress yet. "
+            "Go to the Hànyīn web app, open Sync settings, enter your user ID, and sync!"
+        )
+
+    # Paired Students section
+    if paired_students:
+        paired_sections = ["👥 *Tracked Students:*"]
+        for student in paired_students:
+            # Check if student allows sharing
+            if not student.get("share_progress"):
+                name = student.get("first_name") or student.get("username") or f"Student {student['user_id']}"
+                username_suffix = f" (@{student['username']})" if student.get('username') else ""
+                paired_sections.append(f"👤 *{name}*{username_suffix}\n🔒 _Sharing disabled_")
+            else:
+                paired_sections.append(format_progress_report(student))
+        sections.append("\n\n".join(paired_sections))
+    else:
+        sections.append(
+            "💡 *Tip:* You are not tracking anyone. "
+            "Use `/track @username` to automatically follow your students' progress."
+        )
+
+    await message.reply("\n\n".join(sections), parse_mode="Markdown")
+
+@router.message(Command("share"))
+async def share_cmd(message: Message):
+    args = message.text.split()
+    if len(args) < 2 or args[1].lower() not in ("on", "off"):
+        # Show current sharing status
+        student = get_student_progress(message.from_user.id)
+        sharing = "ON" if (student and student.get("share_progress")) else "OFF"
         await message.reply(
-            "📭 No study progress has been synchronized yet.\n\n"
-            "Open the Hànyīn web app, open the Sync settings, enter your Telegram User ID, and sync!",
+            f"🔒 *Progress Sharing status:* `{sharing}`\n\n"
+            f"To change it, use:\n"
+            f"👉 `/share on` — enable sharing (so Maria/teachers can track you)\n"
+            f"👉 `/share off` — disable sharing",
             parse_mode="Markdown"
         )
         return
 
-    lines = ["🎓 *Chinese Study Progress Report:*"]
-    for p in progress_list:
-        try:
-            member = await message.chat.get_member(p['user_id'])
-            name = member.user.full_name
-        except Exception:
-            name = f"Student {p['user_id']}"
+    val = args[1].lower() == "on"
+    set_share_progress(message.from_user.id, val)
+    status_str = "enabled" if val else "disabled"
+    await message.reply(f"✅ Progress sharing has been *{status_str}*.", parse_mode="Markdown")
 
-        try:
-            lessons = json.loads(p.get('lessons_completed', '[]'))
-        except Exception:
-            lessons = []
-        lessons_str = ", ".join(f"Lesson {l}" for l in lessons) if lessons else "None"
+@router.message(Command("track"))
+async def track_cmd(message: Message):
+    args = message.text.split()
+    if len(args) < 2:
+        await message.reply("⚠️ Please specify the username to track: `/track @username`", parse_mode="Markdown")
+        return
 
-        lines.append(
-            f"👤 *{name}*\n"
-            f"🔥 Streak: *{p['streak']}* days\n"
-            f"🏆 Total Score: *{p['score']}* points\n"
-            f"📚 Completed: *{lessons_str}*\n"
-            f"🎯 Tone Accuracy: *{p['accuracy']}%*\n"
-            f"🕒 Last Active: {p['updated_at']}"
+    target_username = args[1].strip()
+    student = get_user_by_username(target_username)
+    if not student:
+        await message.reply(
+            f"❌ User *{target_username}* not found. "
+            f"They must launch the bot first so their username is registered.",
+            parse_mode="Markdown"
         )
+        return
 
-    await message.reply("\n\n".join(lines), parse_mode="Markdown")
+    if not student.get("share_progress"):
+        await message.reply(
+            f"❌ User *{target_username}* has progress sharing turned off. "
+            f"They need to run `/share on` in the bot before you can track them.",
+            parse_mode="Markdown"
+        )
+        return
+
+    add_pairing(message.from_user.id, student["user_id"])
+    name = student["first_name"] or student["username"] or f"Student {student['user_id']}"
+    await message.reply(f"✅ You are now tracking progress for *{name}* ({target_username}).", parse_mode="Markdown")
+
+@router.message(Command("untrack"))
+async def untrack_cmd(message: Message):
+    args = message.text.split()
+    if len(args) < 2:
+        await message.reply("⚠️ Please specify the username to stop tracking: `/untrack @username`", parse_mode="Markdown")
+        return
+
+    target_username = args[1].strip()
+    student = get_user_by_username(target_username)
+    if not student:
+        await message.reply(f"❌ User *{target_username}* not found.", parse_mode="Markdown")
+        return
+
+    removed = remove_pairing(message.from_user.id, student["user_id"])
+    if removed:
+        name = student["first_name"] or student["username"] or f"Student {student['user_id']}"
+        await message.reply(f"✅ Stopped tracking progress for *{name}* ({target_username}).", parse_mode="Markdown")
+    else:
+        await message.reply(f"📌 You are not tracking *{target_username}*.", parse_mode="Markdown")
+
+@router.message(Command("set_spam_topic"))
+async def set_spam_topic_cmd(message: Message):
+    if message.chat.type not in ("group", "supergroup"):
+        await message.reply("⚠️ This command can only be used in group chats or forum topics.", parse_mode="Markdown")
+        return
+
+    args = message.text.split()
+    target_user = None
+    if len(args) > 1:
+        target_username = args[1].strip()
+        target_user = get_user_by_username(target_username)
+        if not target_user:
+            await message.reply(f"❌ User *{target_username}* not found.", parse_mode="Markdown")
+            return
+    else:
+        target_user = get_user_by_id(message.from_user.id)
+
+    target_id = target_user["user_id"]
+    target_username = target_user["username"] or f"user_{target_id}"
+
+    # Check permissions
+    if target_id != message.from_user.id:
+        if not is_paired(message.from_user.id, target_id):
+            await message.reply(
+                f"❌ You must be tracking *@{target_username}* using `/track @{target_username}` "
+                f"first before you can configure their spam topic.",
+                parse_mode="Markdown"
+            )
+            return
+
+    thread_id = message.message_thread_id
+    upsert_progress_push_config(target_id, message.chat.id, thread_id)
+
+    topic_name = "this topic" if thread_id else "this chat"
+    await message.reply(
+        f"🔔 *Progress Updates Configured!*\n\n"
+        f"Study updates for *@{target_username}* will now be pushed to {topic_name}.",
+        parse_mode="Markdown"
+    )
+
+@router.message(Command("unset_spam_topic"))
+async def unset_spam_topic_cmd(message: Message):
+    args = message.text.split()
+    target_user = None
+    if len(args) > 1:
+        target_username = args[1].strip()
+        target_user = get_user_by_username(target_username)
+        if not target_user:
+            await message.reply(f"❌ User *{target_username}* not found.", parse_mode="Markdown")
+            return
+    else:
+        target_user = get_user_by_id(message.from_user.id)
+
+    target_id = target_user["user_id"]
+    target_username = target_user["username"] or f"user_{target_id}"
+
+    removed = remove_progress_push_config(target_id)
+    if removed:
+        await message.reply(f"🔕 Stopped routing progress updates for *@{target_username}*.", parse_mode="Markdown")
+    else:
+        await message.reply(f"📌 No active spam topic configuration found for *@{target_username}*.", parse_mode="Markdown")
 
 @router.message(Command("settings"))
 async def settings_cmd(message: Message):

@@ -66,6 +66,30 @@ def init_db():
                 accuracy          INTEGER DEFAULT 0,
                 updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
+
+            CREATE TABLE IF NOT EXISTS users (
+                user_id        INTEGER PRIMARY KEY,
+                username       TEXT,
+                first_name     TEXT,
+                last_name      TEXT,
+                share_progress INTEGER DEFAULT 0,
+                updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS pairing (
+                tracker_id INTEGER NOT NULL,
+                student_id INTEGER NOT NULL,
+                PRIMARY KEY (tracker_id, student_id),
+                FOREIGN KEY (tracker_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS progress_push_configs (
+                student_id        INTEGER PRIMARY KEY,
+                chat_id           INTEGER NOT NULL,
+                message_thread_id INTEGER,
+                FOREIGN KEY (student_id) REFERENCES users(user_id) ON DELETE CASCADE
+            );
         """)
 
 def _migrate_from_json(json_path: str):
@@ -224,3 +248,97 @@ def get_all_user_progress() -> list[dict]:
             ORDER BY updated_at DESC
         """).fetchall()
         return [dict(r) for r in rows]
+
+# ── Users & Sharing / Pairing ──────────────────────────────────────────────────
+
+def upsert_user(user_id: int, username: str | None, first_name: str | None, last_name: str | None) -> None:
+    if username:
+        username = username.lower()
+    with db() as conn:
+        conn.execute("""
+            INSERT INTO users (user_id, username, first_name, last_name, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                username = COALESCE(excluded.username, users.username),
+                first_name = COALESCE(excluded.first_name, users.first_name),
+                last_name = COALESCE(excluded.last_name, users.last_name),
+                updated_at = CURRENT_TIMESTAMP
+        """, (user_id, username, first_name, last_name))
+
+def set_share_progress(user_id: int, share: bool) -> None:
+    with db() as conn:
+        conn.execute("""
+            INSERT INTO users (user_id, share_progress, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+                share_progress = excluded.share_progress,
+                updated_at = CURRENT_TIMESTAMP
+        """, (user_id, 1 if share else 0))
+
+def get_user_by_username(username: str) -> dict | None:
+    username = username.lower().lstrip('@')
+    with db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        return dict(row) if row else None
+
+def get_user_by_id(user_id: int) -> dict | None:
+    with db() as conn:
+        row = conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        return dict(row) if row else None
+
+def add_pairing(tracker_id: int, student_id: int) -> None:
+    with db() as conn:
+        conn.execute("INSERT OR IGNORE INTO pairing (tracker_id, student_id) VALUES (?, ?)", (tracker_id, student_id))
+
+def remove_pairing(tracker_id: int, student_id: int) -> bool:
+    with db() as conn:
+        cur = conn.execute("DELETE FROM pairing WHERE tracker_id = ? AND student_id = ?", (tracker_id, student_id))
+        return cur.rowcount > 0
+
+def is_paired(tracker_id: int, student_id: int) -> bool:
+    with db() as conn:
+        row = conn.execute("SELECT 1 FROM pairing WHERE tracker_id = ? AND student_id = ?", (tracker_id, student_id)).fetchone()
+        return row is not None
+
+def get_paired_students(tracker_id: int) -> list[dict]:
+    with db() as conn:
+        rows = conn.execute("""
+            SELECT u.user_id, u.username, u.first_name, u.last_name, u.share_progress,
+                   p.streak, p.score, p.lessons_completed, p.accuracy, p.updated_at
+            FROM pairing pr
+            JOIN users u ON pr.student_id = u.user_id
+            LEFT JOIN user_progress p ON pr.student_id = p.user_id
+            WHERE pr.tracker_id = ?
+        """, (tracker_id,)).fetchall()
+        return [dict(r) for r in rows]
+
+def get_student_progress(student_id: int) -> dict | None:
+    with db() as conn:
+        row = conn.execute("""
+            SELECT u.user_id, u.username, u.first_name, u.last_name, u.share_progress,
+                   p.streak, p.score, p.lessons_completed, p.accuracy, p.updated_at
+            FROM users u
+            LEFT JOIN user_progress p ON u.user_id = p.user_id
+            WHERE u.user_id = ?
+        """, (student_id,)).fetchone()
+        return dict(row) if row else None
+
+def upsert_progress_push_config(student_id: int, chat_id: int, message_thread_id: int | None) -> None:
+    with db() as conn:
+        conn.execute("""
+            INSERT INTO progress_push_configs (student_id, chat_id, message_thread_id)
+            VALUES (?, ?, ?)
+            ON CONFLICT(student_id) DO UPDATE SET
+                chat_id = excluded.chat_id,
+                message_thread_id = excluded.message_thread_id
+        """, (student_id, chat_id, message_thread_id))
+
+def remove_progress_push_config(student_id: int) -> bool:
+    with db() as conn:
+        cur = conn.execute("DELETE FROM progress_push_configs WHERE student_id = ?", (student_id,))
+        return cur.rowcount > 0
+
+def get_progress_push_config(student_id: int) -> dict | None:
+    with db() as conn:
+        row = conn.execute("SELECT * FROM progress_push_configs WHERE student_id = ?", (student_id,)).fetchone()
+        return dict(row) if row else None
