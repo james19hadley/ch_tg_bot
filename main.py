@@ -34,9 +34,32 @@ async def handle_progress_api(request):
         logging.error(f"API Error: {e}")
         return web.json_response({'error': str(e)}, status=500, headers={'Access-Control-Allow-Origin': '*'})
 
+async def handle_tts_api(request):
+    if request.method == 'OPTIONS':
+        return web.Response(headers={
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type',
+        })
+    text = request.query.get('text', '').strip()
+    if not text:
+        return web.json_response({'error': 'text is required'}, status=400, headers={'Access-Control-Allow-Origin': '*'})
+
+    from ch_tg_bot.text_audio import get_tts_audio_bytes
+    audio_data = await get_tts_audio_bytes(text)
+    if not audio_data:
+        return web.json_response({'error': 'failed to generate TTS'}, status=500, headers={'Access-Control-Allow-Origin': '*'})
+
+    return web.Response(
+        body=audio_data,
+        content_type='audio/mpeg',
+        headers={'Access-Control-Allow-Origin': '*'}
+    )
+
 async def start_http_server():
     app = web.Application()
     app.router.add_route('*', '/api/progress', handle_progress_api)
+    app.router.add_route('*', '/api/tts', handle_tts_api)
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, '0.0.0.0', 8090)

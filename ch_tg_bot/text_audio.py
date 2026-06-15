@@ -55,3 +55,18 @@ async def get_tts_voice(text: str) -> BufferedInputFile:
     except Exception as e:
         print(f"TTS Error: {e}")
         return None
+
+async def get_tts_audio_bytes(text: str) -> bytes | None:
+    try:
+        voice = "zh-CN-XiaoxiaoNeural"
+        communicate = edge_tts.Communicate(text, voice)
+
+        audio_data = b""
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_data += chunk["data"]
+
+        return audio_data if audio_data else None
+    except Exception as e:
+        print(f"TTS Bytes Error: {e}")
+        return None
